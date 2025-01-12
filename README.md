@@ -34,6 +34,7 @@ python app.py      # Start the application
 ## Tests
 ```bash
 python -m pytest tests/test_upload.py -v
+python -m pytest tests/test_search.py -v
 ```
 
 ## Usage

@@ -128,6 +128,22 @@ def upload():
             
     return render_template('upload.html')
 
+@app.route('/search')
+@login_required
+def search():
+    query = request.args.get('q', '').strip()
+    users = []
+    if query:
+        # Search for users whose username contains the query (case-insensitive)
+        users = User.query.filter(User.username.ilike(f'%{query}%')).all()
+    return render_template('search.html', users=users, query=query)
+
+@app.route('/profile/<username>')
+@login_required
+def public_profile(username):
+    profile_user = User.query.filter_by(username=username).first_or_404()
+    return render_template('public_profile.html', profile_user=profile_user)
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()

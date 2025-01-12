@@ -1,3 +1,6 @@
+chromedriver/
+chromedriver_linux64/
+
 # Python virtual environment
 venv/
 env/
