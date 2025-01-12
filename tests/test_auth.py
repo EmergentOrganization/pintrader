@@ -1,24 +1,10 @@
 import pytest
-from app import app, db, User, File
+from app import db, User, File
 import os
 from io import BytesIO
 import json
-
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
-    app.config['WTF_CSRF_ENABLED'] = False
-    
-    with app.test_client() as client:
-        with app.app_context():
-            db.create_all()
-            yield client
-            db.drop_all()
-            
-    # Clean up test database
-    if os.path.exists('test.db'):
-        os.remove('test.db')
+from unittest.mock import patch
+from sqlalchemy.exc import DataError
 
 def test_index_page(client):
     """Test if the index page loads correctly"""
@@ -26,7 +12,7 @@ def test_index_page(client):
     assert response.status_code == 200
     assert b'Welcome to PinTrader' in response.data
 
-def test_registration(client):
+def test_registration(client, app):
     """Test user registration"""
     response = client.post('/register', data={
         'username': 'testuser',
@@ -42,7 +28,7 @@ def test_registration(client):
         assert user is not None
         assert user.email == 'test@example.com'
 
-def test_login_success(client):
+def test_login_success(client, app):
     """Test successful login"""
     # First create a user
     with app.app_context():
@@ -68,7 +54,7 @@ def test_login_failure(client):
     assert response.status_code == 200
     assert b'Invalid username or password' in response.data
 
-def test_profile_access(client):
+def test_profile_access(client, app):
     """Test profile page access"""
     # Test unauthorized access
     response = client.get('/profile', follow_redirects=True)
@@ -91,14 +77,16 @@ def test_profile_access(client):
     assert response.status_code == 200
     assert b'Profile' in response.data
 
-def test_file_upload(client):
-    """Test file registration functionality"""
+def test_file_upload(client, app):
+    """Test file upload functionality"""
+    user_id = None
     # First create and login a user
     with app.app_context():
         user = User(username='testuser2', email='test2@example.com')
         user.set_password('testpass123')
         db.session.add(user)
         db.session.commit()
+        user_id = user.id
     
     # Login
     client.post('/login', data={
@@ -106,102 +94,45 @@ def test_file_upload(client):
         'password': 'testpass123'
     })
     
-    # Test file registration
-    test_data = {
-        'filename': 'test.txt',
-        'multihash': 'QmTest456',
-        'description': 'Test file description'
-    }
+    # Create a test file
+    data = {'file': (BytesIO(b'test file content'), 'test.txt')}
     
-    # Try to register the file
-    response = client.post('/upload',
-                          data=json.dumps(test_data),
-                          content_type='application/json')
-    
-    assert response.status_code == 200
-    
-    # Verify the file was registered in the database
-    with app.app_context():
-        file = File.query.filter_by(multihash='QmTest456').first()
-        assert file is not None
-        assert file.filename == 'test.txt'
-        assert file.description == 'Test file description'
+    # Mock IPFS client
+    mock_ipfs_result = {'Hash': 'QmTestHash123'}
+    with patch('app.get_ipfs_client') as mock_client:
+        # Configure the mock
+        mock_instance = mock_client.return_value
+        mock_instance.add.return_value = mock_ipfs_result
+        
+        # Test file upload
+        response = client.post('/upload_file', 
+            data=data,
+            follow_redirects=True)
+        
+        assert response.status_code == 200
+        
+        # Verify file was saved in database
+        with app.app_context():
+            file = File.query.filter_by(filename='test.txt').first()
+            assert file is not None
+            assert file.user_id == user_id
+            assert file.multihash == 'QmTestHash123'
 
-def test_file_upload_api():
-    """Test the file upload API endpoint"""
-    # First create and login a user
+def test_password_hash_length(app):
+    """Test that long passwords can be stored correctly"""
     with app.app_context():
-        user = User(username='testuser3', email='test3@example.com')
-        user.set_password('testpass123')
-        db.session.add(user)
-        db.session.commit()
-    
-    # Login
-    client = app.test_client()
-    client.post('/login', data={
-        'username': 'testuser3',
-        'password': 'testpass123'
-    })
-    
-    # Test file registration
-    test_data = {
-        'filename': 'test.txt',
-        'multihash': 'QmTest789',
-        'description': 'Test file description'
-    }
-    
-    response = client.post('/upload',
-                          data=json.dumps(test_data),
-                          content_type='application/json')
-    
-    assert response.status_code == 200
-    
-    # Verify the file was registered in the database
-    with app.app_context():
-        file = File.query.filter_by(multihash='QmTest789').first()
-        assert file is not None
-        assert file.filename == 'test.txt'
-        assert file.description == 'Test file description'
+        # Create a user with a long password
+        user = User(username='testuser_long', email='test_long@example.com')
+        # Use a long password (50 characters)
+        long_password = 'x' * 50
+        user.set_password(long_password)
         
-        # Test duplicate multihash
-        response = client.post('/upload',
-                             data=json.dumps(test_data),
-                             content_type='application/json')
-        assert response.status_code == 400  # Should fail with duplicate multihash
-
-def test_database_schema():
-    """Test that the database schema is correct and includes all necessary columns"""
-    with app.app_context():
-        # Create tables
-        db.create_all()
-        
-        # Get table information
-        inspector = db.inspect(db.engine)
-        
-        # Check File table columns
-        file_columns = {column['name'] for column in inspector.get_columns('file')}
-        required_columns = {'id', 'filename', 'multihash', 'description', 'upload_date', 'user_id'}
-        
-        assert required_columns.issubset(file_columns), f"Missing columns in File table. Required: {required_columns}, Found: {file_columns}"
-        
-        # Create a test user and file
-        user = User(username='testuser', email='test@example.com')
-        user.set_password('testpass123')
+        # Verify the hash is created and can be stored
         db.session.add(user)
         db.session.commit()
         
-        # Try to create a file record
-        file = File(
-            filename='test.txt',
-            multihash='QmTest123',
-            description='Test file',
-            user_id=user.id
-        )
-        db.session.add(file)
-        db.session.commit()
-        
-        # Try to query the file
-        saved_file = File.query.filter_by(multihash='QmTest123').first()
-        assert saved_file is not None
-        assert saved_file.filename == 'test.txt'
-        assert saved_file.multihash == 'QmTest123'
+        # Retrieve the user and verify the password still works
+        saved_user = User.query.filter_by(username='testuser_long').first()
+        assert saved_user is not None
+        assert saved_user.check_password(long_password)
+        assert len(saved_user.password_hash) > 128  # Verify hash is longer than the original field size

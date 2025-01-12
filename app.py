@@ -3,10 +3,18 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+from werkzeug.utils import secure_filename
+import ipfshttpclient
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///pintrader.db')
+
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Ensure upload folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -16,7 +24,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128))
+    password_hash = db.Column(db.String(512))  # Increased from 128 to 512 to accommodate longer hashes
     files = db.relationship('File', backref='owner', lazy=True)
 
     def set_password(self, password):
@@ -29,6 +37,7 @@ class File(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     multihash = db.Column(db.String(255), nullable=False, unique=True)
+    filepath = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
     upload_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
     file_size = db.Column(db.Integer, nullable=False)  # Size in bytes
@@ -141,6 +150,69 @@ def upload():
             
     return render_template('upload.html')
 
+# Initialize IPFS client
+def get_ipfs_client():
+    try:
+        # Use 'ipfs' as the hostname (container name in docker-compose)
+        return ipfshttpclient.connect('/dns/ipfs/tcp/5001/http')
+    except Exception as e:
+        print(f"Failed to connect to IPFS daemon: {e}")
+        return None
+
+@app.route('/upload_file', methods=['POST'])
+@login_required
+def upload_file():
+    if 'file' not in request.files:
+        flash('No file selected', 'danger')
+        return redirect(url_for('upload'))
+        
+    file = request.files['file']
+    if file.filename == '':
+        flash('No file selected', 'danger')
+        return redirect(url_for('upload'))
+        
+    if file:
+        try:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Connect to IPFS and add the file
+            client = get_ipfs_client()
+            if not client:
+                flash('IPFS daemon not running', 'danger')
+                return redirect(url_for('upload'))
+                
+            # Add file to IPFS
+            result = client.add(filepath)
+            ipfs_hash = result['Hash']
+            
+            # Save file info to database
+            description = request.form.get('description', '')
+            new_file = File(
+                filename=filename,
+                filepath=filepath,
+                multihash=ipfs_hash,
+                description=description,
+                file_size=os.path.getsize(filepath),
+                user_id=current_user.id
+            )
+            db.session.add(new_file)
+            db.session.commit()
+            
+            # Close IPFS client
+            client.close()
+            
+            flash(f'File uploaded successfully! IPFS CID: {ipfs_hash}', 'success')
+            return redirect(url_for('profile'))
+            
+        except Exception as e:
+            flash(f'Error uploading to IPFS: {str(e)}', 'danger')
+            return redirect(url_for('upload'))
+        
+    flash('Error uploading file', 'danger')
+    return redirect(url_for('upload'))
+
 @app.route('/search')
 @login_required
 def search():
@@ -159,5 +231,6 @@ def public_profile(username):
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
-    app.run(debug=True)
+        db.drop_all()  # Drop all existing tables
+        db.create_all()  # Create all tables fresh
+    app.run(host='0.0.0.0', debug=True)

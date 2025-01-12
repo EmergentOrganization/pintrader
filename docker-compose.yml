@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/pintrader
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - ipfs
+    networks:
+      - pintrader-net
+    restart: always
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=pintrader
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - pintrader-net
+
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "4001:4001"  # IPFS swarm
+      - "5001:5001"  # IPFS API
+      - "8080:8080"  # IPFS Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_export:/export
+    networks:
+      - pintrader-net
+
+networks:
+  pintrader-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ipfs_data:
+  ipfs_export:
