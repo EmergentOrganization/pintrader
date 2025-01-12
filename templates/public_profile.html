@@ -16,27 +16,27 @@
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
+                                        <th>Link</th>
                                         <th>Filename</th>
                                         <th>Description</th>
                                         <th>Size</th>
                                         <th>Upload Date</th>
                                         <th>IPFS CID</th>
-                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for file in profile_user.files %}
                                         <tr>
-                                            <td>{{ file.filename }}</td>
-                                            <td>{{ file.description or 'No description' }}</td>
-                                            <td>{{ file.get_size_display() }}</td>
-                                            <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                            <td><code>{{ file.multihash }}</code></td>
                                             <td>
                                                 <a href="https://ipfs.io/ipfs/{{ file.multihash }}" target="_blank" class="btn btn-sm btn-primary">
                                                     <i class="bi bi-cloud-download"></i> View on IPFS
                                                 </a>
                                             </td>
+                                            <td>{{ file.filename }}</td>
+                                            <td>{{ file.description or 'No description' }}</td>
+                                            <td>{{ file.get_size_display() }}</td>
+                                            <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                            <td><code>{{ file.multihash }}</code></td>
                                         </tr>
                                     {% endfor %}
                                 </tbody>
