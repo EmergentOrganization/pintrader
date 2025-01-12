@@ -172,7 +172,7 @@ def upload_file():
         file_size = os.path.getsize(filepath)
         db_file = File(
             filename=filename,
-            filepath=filepath,
+            filepath=filename,  # Store just the filename
             file_size=file_size,
             user_id=current_user.id,
             ipfs_status='pending'  # Will be processed by IPFS service later

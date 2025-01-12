@@ -24,7 +24,7 @@ engine = create_engine(DB_URL)
 def get_ipfs_client():
     """Connect to IPFS daemon"""
     try:
-        return ipfshttpclient.connect('http://ipfs:5001')
+        return ipfshttpclient.connect('/dns/ipfs/tcp/5001/http')
     except Exception as e:
         logger.error(f"Failed to connect to IPFS daemon: {e}")
         return None
@@ -71,7 +71,8 @@ def process_pending_files():
                     conn.commit()
                     
                     # Add file to IPFS
-                    filepath = os.path.join('/app/uploads', file.filepath)
+                    # Use just the filename, since the volume mount already points to the uploads directory
+                    filepath = os.path.join('/app/uploads', os.path.basename(file.filepath))
                     if not os.path.exists(filepath):
                         logger.error(f"File not found: {filepath}")
                         continue

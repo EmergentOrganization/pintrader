@@ -30,7 +30,7 @@ services:
       - pintrader-net
 
   ipfs:
-    image: ipfs/kubo:latest
+    image: ipfs/go-ipfs:v0.7.0  # Using an older version compatible with ipfshttpclient
     ports:
       - "4001:4001"  # IPFS swarm
       - "5001:5001"  # IPFS API
