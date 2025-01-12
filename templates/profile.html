@@ -25,6 +25,37 @@
                         </div>
                     </div>
                 </div>
+                
+                <hr>
+                
+                <div class="mt-4">
+                    <h4>Your Uploads</h4>
+                    {% if current_user.files %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Filename</th>
+                                        <th>Description</th>
+                                        <th>Upload Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for file in current_user.files %}
+                                    <tr>
+                                        <td>{{ file.filename }}</td>
+                                        <td>{{ file.description or 'No description' }}</td>
+                                        <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No files uploaded yet.</p>
+                        <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload your first file</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
