@@ -40,22 +40,44 @@
                                         <th>Description</th>
                                         <th>Size</th>
                                         <th>Upload Date</th>
-                                        <th>IPFS CID</th>
+                                        <th>IPFS Status</th>
+                                        <th>IPFS Hash</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for file in current_user.files %}
                                     <tr>
                                         <td>
-                                            <a href="https://ipfs.io/ipfs/{{ file.multihash }}" target="_blank" class="btn btn-sm btn-primary">
-                                                <i class="bi bi-cloud-download"></i> View on IPFS
-                                            </a>
+                                            {% if file.multihash %}
+                                                <a href="https://ipfs.io/ipfs/{{ file.multihash }}" target="_blank" class="btn btn-sm btn-primary">
+                                                    <i class="bi bi-cloud-download"></i> View on IPFS
+                                                </a>
+                                            {% else %}
+                                                <em>Waiting for IPFS...</em>
+                                            {% endif %}
                                         </td>
                                         <td>{{ file.filename }}</td>
                                         <td>{{ file.description or 'No description' }}</td>
                                         <td>{{ file.get_size_display() }}</td>
                                         <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                        <td><code>{{ file.multihash }}</code></td>
+                                        <td>
+                                            {% if file.ipfs_status == 'pending' %}
+                                                <span class="badge bg-warning">Pending</span>
+                                            {% elif file.ipfs_status == 'processing' %}
+                                                <span class="badge bg-info">Processing</span>
+                                            {% elif file.ipfs_status == 'completed' %}
+                                                <span class="badge bg-success">Completed</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">Failed</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if file.multihash %}
+                                                <code>{{ file.multihash }}</code>
+                                            {% else %}
+                                                <em>Waiting for IPFS...</em>
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>

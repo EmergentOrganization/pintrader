@@ -14,7 +14,6 @@ services:
       - ./frontend:/app
     depends_on:
       - db
-      - ipfs
     networks:
       - pintrader-net
     restart: always
@@ -30,23 +29,9 @@ services:
     networks:
       - pintrader-net
 
-  ipfs:
-    image: ipfs/kubo:latest
-    ports:
-      - "4001:4001"  # IPFS swarm
-      - "5001:5001"  # IPFS API
-      - "8080:8080"  # IPFS Gateway
-    volumes:
-      - ipfs_data:/data/ipfs
-      - ipfs_export:/export
-    networks:
-      - pintrader-net
-
 networks:
   pintrader-net:
     driver: bridge
 
 volumes:
   postgres_data:
-  ipfs_data:
-  ipfs_export:

@@ -4,7 +4,6 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from werkzeug.utils import secure_filename
-import ipfshttpclient
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -36,12 +35,13 @@ class User(UserMixin, db.Model):
 class File(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
-    multihash = db.Column(db.String(255), nullable=False, unique=True)
     filepath = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
     upload_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
     file_size = db.Column(db.Integer, nullable=False)  # Size in bytes
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ipfs_status = db.Column(db.String(50), default='pending')  # pending, processing, completed, failed
+    multihash = db.Column(db.String(255), nullable=True)  # Make multihash optional
 
     def get_size_display(self):
         """Return human-readable file size"""
@@ -150,15 +150,6 @@ def upload():
             
     return render_template('upload.html')
 
-# Initialize IPFS client
-def get_ipfs_client():
-    try:
-        # Use 'ipfs' as the hostname (container name in docker-compose)
-        return ipfshttpclient.connect('/dns/ipfs/tcp/5001/http')
-    except Exception as e:
-        print(f"Failed to connect to IPFS daemon: {e}")
-        return None
-
 @app.route('/upload_file', methods=['POST'])
 @login_required
 def upload_file():
@@ -172,43 +163,26 @@ def upload_file():
         return redirect(url_for('upload'))
         
     if file:
-        try:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            
-            # Connect to IPFS and add the file
-            client = get_ipfs_client()
-            if not client:
-                flash('IPFS daemon not running', 'danger')
-                return redirect(url_for('upload'))
-                
-            # Add file to IPFS
-            result = client.add(filepath)
-            ipfs_hash = result['Hash']
-            
-            # Save file info to database
-            description = request.form.get('description', '')
-            new_file = File(
-                filename=filename,
-                filepath=filepath,
-                multihash=ipfs_hash,
-                description=description,
-                file_size=os.path.getsize(filepath),
-                user_id=current_user.id
-            )
-            db.session.add(new_file)
-            db.session.commit()
-            
-            # Close IPFS client
-            client.close()
-            
-            flash(f'File uploaded successfully! IPFS CID: {ipfs_hash}', 'success')
-            return redirect(url_for('profile'))
-            
-        except Exception as e:
-            flash(f'Error uploading to IPFS: {str(e)}', 'danger')
-            return redirect(url_for('upload'))
+        filename = secure_filename(file.filename)
+        # Save file to uploads directory
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Create file record in database
+        file_size = os.path.getsize(filepath)
+        db_file = File(
+            filename=filename,
+            filepath=filepath,
+            file_size=file_size,
+            user_id=current_user.id,
+            ipfs_status='pending'  # Will be processed by IPFS service later
+        )
+        
+        db.session.add(db_file)
+        db.session.commit()
+        
+        flash('File uploaded successfully! IPFS processing will begin shortly.', 'success')
+        return redirect(url_for('profile'))
         
     flash('Error uploading file', 'danger')
     return redirect(url_for('upload'))
