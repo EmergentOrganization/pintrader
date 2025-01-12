@@ -29,13 +29,14 @@
                 <hr>
                 
                 <div class="mt-4">
-                    <h4>Your Uploads</h4>
+                    <h4>Your Registered Files</h4>
                     {% if current_user.files %}
                         <div class="table-responsive">
                             <table class="table">
                                 <thead>
                                     <tr>
                                         <th>Filename</th>
+                                        <th>Multihash</th>
                                         <th>Description</th>
                                         <th>Upload Date</th>
                                     </tr>
@@ -44,6 +45,7 @@
                                     {% for file in current_user.files %}
                                     <tr>
                                         <td>{{ file.filename }}</td>
+                                        <td><code>{{ file.multihash }}</code></td>
                                         <td>{{ file.description or 'No description' }}</td>
                                         <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                                     </tr>
@@ -52,8 +54,8 @@
                             </table>
                         </div>
                     {% else %}
-                        <p class="text-muted">No files uploaded yet.</p>
-                        <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload your first file</a>
+                        <p class="text-muted">No files registered yet.</p>
+                        <a href="{{ url_for('upload') }}" class="btn btn-primary">Register your first file</a>
                     {% endif %}
                 </div>
             </div>

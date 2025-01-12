@@ -3,28 +3,126 @@
 {% block title %}Upload{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
+<div class="row justify-content-center mb-5">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="text-center">Upload File</h2>
+                <h2 class="text-center">Register File</h2>
             </div>
             <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
+                <form id="uploadForm">
                     <div class="mb-3">
-                        <label for="file" class="form-label">Choose File</label>
-                        <input type="file" class="form-control" id="file" name="file" required>
+                        <label for="file" class="form-label">Select File</label>
+                        <input type="file" class="form-control" id="file" required>
                     </div>
                     <div class="mb-3">
-                        <label for="description" class="form-label">Description (optional)</label>
-                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                        <label for="multihash" class="form-label">IPFS CID</label>
+                        <input type="text" class="form-control" id="multihash" readonly>
+                        <small class="form-text text-muted">This is the Content Identifier (CID) that uniquely identifies your file on IPFS.</small>
                     </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">Upload</button>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3"></textarea>
+                    </div>
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary btn-lg">Register File</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script>
+async function computeMultihash(file) {
+    try {
+        // Read file as ArrayBuffer
+        const buffer = await file.arrayBuffer();
+        const content = new Uint8Array(buffer);
+        
+        // Convert Uint8Array to WordArray for CryptoJS
+        const wordArray = CryptoJS.lib.WordArray.create(content);
+        
+        // Compute SHA-256 hash
+        const hash = CryptoJS.SHA256(wordArray);
+        
+        // Convert hash to hex string
+        const hashHex = hash.toString();
+        
+        // Convert hex to bytes
+        const hashBytes = new Uint8Array(hashHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        
+        // Prepend the multicodec prefix for SHA-256 (0x12, 0x20 for 32 bytes length)
+        const multicodecPrefix = new Uint8Array([0x12, 0x20]);
+        const fullBytes = new Uint8Array(multicodecPrefix.length + hashBytes.length);
+        fullBytes.set(multicodecPrefix);
+        fullBytes.set(hashBytes, multicodecPrefix.length);
+        
+        // Convert to base32 with 'b' prefix (CIDv1)
+        const cidBytes = new Uint8Array([0x01, 0x55, ...fullBytes]);
+        const base32 = 'b' + Array.from(cidBytes)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase();
+        
+        return base32;
+    } catch (error) {
+        console.error('Error computing hash:', error);
+        throw error;
+    }
+}
+
+document.getElementById('file').addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        try {
+            const multihash = await computeMultihash(file);
+            document.getElementById('multihash').value = multihash;
+        } catch (error) {
+            console.error('Error computing hash:', error);
+            alert('Error computing file hash: ' + error.message);
+        }
+    }
+});
+
+document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const file = document.getElementById('file').files[0];
+    const multihash = document.getElementById('multihash').value;
+    const description = document.getElementById('description').value;
+    
+    if (!file || !multihash) {
+        alert('Please select a file first');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                filename: file.name,
+                multihash: multihash,
+                description: description
+            })
+        });
+        
+        if (response.ok) {
+            window.location.href = '/profile';
+        } else {
+            const error = await response.text();
+            alert('Error registering file: ' + error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error registering file: ' + error.message);
+    }
+});
+</script>
 {% endblock %}

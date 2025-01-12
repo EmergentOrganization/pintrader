@@ -1,17 +1,14 @@
 import pytest
-from app import app, db, User
+from app import app, db, User, File
 import os
 from io import BytesIO
+import json
 
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
     app.config['WTF_CSRF_ENABLED'] = False
-    app.config['UPLOAD_FOLDER'] = 'test_uploads'
-    
-    # Create test uploads directory
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     
     with app.test_client() as client:
         with app.app_context():
@@ -19,12 +16,9 @@ def client():
             yield client
             db.drop_all()
             
-    # Clean up test database and uploads
+    # Clean up test database
     if os.path.exists('test.db'):
         os.remove('test.db')
-    if os.path.exists('test_uploads'):
-        import shutil
-        shutil.rmtree('test_uploads')
 
 def test_index_page(client):
     """Test if the index page loads correctly"""
@@ -98,39 +92,116 @@ def test_profile_access(client):
     assert b'Profile' in response.data
 
 def test_file_upload(client):
-    """Test file upload functionality"""
+    """Test file registration functionality"""
     # First create and login a user
     with app.app_context():
-        user = User(username='testuser', email='test@example.com')
+        user = User(username='testuser2', email='test2@example.com')
         user.set_password('testpass123')
         db.session.add(user)
         db.session.commit()
     
     # Login
     client.post('/login', data={
-        'username': 'testuser',
+        'username': 'testuser2',
         'password': 'testpass123'
     })
     
-    # Create a test file
-    data = {
-        'file': (BytesIO(b'Test file content'), 'test.txt'),
+    # Test file registration
+    test_data = {
+        'filename': 'test.txt',
+        'multihash': 'QmTest456',
         'description': 'Test file description'
     }
     
-    # Try to upload
-    response = client.post('/upload', 
-                         data=data,
-                         content_type='multipart/form-data')
+    # Try to register the file
+    response = client.post('/upload',
+                          data=json.dumps(test_data),
+                          content_type='application/json')
     
-    assert response.status_code == 302  # Should redirect after successful upload
+    assert response.status_code == 200
     
-    # Check if file was saved
+    # Verify the file was registered in the database
     with app.app_context():
-        user = User.query.filter_by(username='testuser').first()
-        assert len(user.files) == 1
-        assert user.files[0].filename == 'test.txt'
-        assert user.files[0].description == 'Test file description'
+        file = File.query.filter_by(multihash='QmTest456').first()
+        assert file is not None
+        assert file.filename == 'test.txt'
+        assert file.description == 'Test file description'
+
+def test_file_upload_api():
+    """Test the file upload API endpoint"""
+    # First create and login a user
+    with app.app_context():
+        user = User(username='testuser3', email='test3@example.com')
+        user.set_password('testpass123')
+        db.session.add(user)
+        db.session.commit()
+    
+    # Login
+    client = app.test_client()
+    client.post('/login', data={
+        'username': 'testuser3',
+        'password': 'testpass123'
+    })
+    
+    # Test file registration
+    test_data = {
+        'filename': 'test.txt',
+        'multihash': 'QmTest789',
+        'description': 'Test file description'
+    }
+    
+    response = client.post('/upload',
+                          data=json.dumps(test_data),
+                          content_type='application/json')
+    
+    assert response.status_code == 200
+    
+    # Verify the file was registered in the database
+    with app.app_context():
+        file = File.query.filter_by(multihash='QmTest789').first()
+        assert file is not None
+        assert file.filename == 'test.txt'
+        assert file.description == 'Test file description'
         
-    # Check if file exists in upload directory
-    assert os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], 'test.txt'))
+        # Test duplicate multihash
+        response = client.post('/upload',
+                             data=json.dumps(test_data),
+                             content_type='application/json')
+        assert response.status_code == 400  # Should fail with duplicate multihash
+
+def test_database_schema():
+    """Test that the database schema is correct and includes all necessary columns"""
+    with app.app_context():
+        # Create tables
+        db.create_all()
+        
+        # Get table information
+        inspector = db.inspect(db.engine)
+        
+        # Check File table columns
+        file_columns = {column['name'] for column in inspector.get_columns('file')}
+        required_columns = {'id', 'filename', 'multihash', 'description', 'upload_date', 'user_id'}
+        
+        assert required_columns.issubset(file_columns), f"Missing columns in File table. Required: {required_columns}, Found: {file_columns}"
+        
+        # Create a test user and file
+        user = User(username='testuser', email='test@example.com')
+        user.set_password('testpass123')
+        db.session.add(user)
+        db.session.commit()
+        
+        # Try to create a file record
+        file = File(
+            filename='test.txt',
+            multihash='QmTest123',
+            description='Test file',
+            user_id=user.id
+        )
+        db.session.add(file)
+        db.session.commit()
+        
+        # Try to query the file
+        saved_file = File.query.filter_by(multihash='QmTest123').first()
+        assert saved_file is not None
+        assert saved_file.filename == 'test.txt'
+        assert saved_file.multihash == 'QmTest123'

@@ -1,16 +1,12 @@
-from flask import Flask, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -32,12 +28,10 @@ class User(UserMixin, db.Model):
 class File(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
+    multihash = db.Column(db.String(255), nullable=False, unique=True)
     description = db.Column(db.Text, nullable=True)
     upload_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -103,34 +97,34 @@ def logout():
 @login_required
 def upload():
     if request.method == 'POST':
-        if 'file' not in request.files:
-            flash('No file part')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(request.url)
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            # Save file to disk
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        if not request.is_json:
+            return 'Request must be JSON', 400
             
-            # Create file record in database
-            new_file = File(
-                filename=filename,
-                description=request.form.get('description', ''),
-                user_id=current_user.id
-            )
-            db.session.add(new_file)
-            db.session.commit()
+        data = request.get_json()
+        
+        if not data.get('multihash'):
+            return 'Multihash is required', 400
             
-            flash('File successfully uploaded')
-            return redirect(url_for('profile'))
-        else:
-            flash('Allowed file types are: ' + ', '.join(ALLOWED_EXTENSIONS))
-            return redirect(request.url)
+        if not data.get('filename'):
+            return 'Filename is required', 400
+            
+        # Check if multihash already exists
+        existing_file = File.query.filter_by(multihash=data['multihash']).first()
+        if existing_file:
+            return 'File with this hash already exists', 400
+            
+        # Create file record in database
+        new_file = File(
+            filename=data['filename'],
+            multihash=data['multihash'],
+            description=data.get('description', ''),
+            user_id=current_user.id
+        )
+        
+        db.session.add(new_file)
+        db.session.commit()
+        
+        return jsonify({'message': 'File hash registered successfully'})
             
     return render_template('upload.html')
 
