@@ -31,7 +31,16 @@ class File(db.Model):
     multihash = db.Column(db.String(255), nullable=False, unique=True)
     description = db.Column(db.Text, nullable=True)
     upload_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+    file_size = db.Column(db.Integer, nullable=False)  # Size in bytes
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    def get_size_display(self):
+        """Return human-readable file size"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if self.file_size < 1024:
+                return f"{self.file_size:.1f} {unit}"
+            self.file_size /= 1024
+        return f"{self.file_size:.1f} TB"
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -108,6 +117,9 @@ def upload():
         if not data.get('filename'):
             return 'Filename is required', 400
             
+        if not data.get('fileSize'):
+            return 'File size is required', 400
+
         # Check if multihash already exists
         existing_file = File.query.filter_by(multihash=data['multihash']).first()
         if existing_file:
@@ -118,6 +130,7 @@ def upload():
             filename=data['filename'],
             multihash=data['multihash'],
             description=data.get('description', ''),
+            file_size=data['fileSize'],
             user_id=current_user.id
         )
         

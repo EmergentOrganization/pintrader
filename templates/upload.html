@@ -109,7 +109,8 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
             body: JSON.stringify({
                 filename: file.name,
                 multihash: multihash,
-                description: description
+                description: description,
+                fileSize: file.size
             })
         });
         

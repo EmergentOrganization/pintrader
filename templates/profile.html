@@ -36,18 +36,20 @@
                                 <thead>
                                     <tr>
                                         <th>Filename</th>
-                                        <th>Multihash</th>
                                         <th>Description</th>
+                                        <th>Size</th>
                                         <th>Upload Date</th>
+                                        <th>IPFS CID</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for file in current_user.files %}
                                     <tr>
                                         <td>{{ file.filename }}</td>
-                                        <td><code>{{ file.multihash }}</code></td>
                                         <td>{{ file.description or 'No description' }}</td>
+                                        <td>{{ file.get_size_display() }}</td>
                                         <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                        <td><code>{{ file.multihash }}</code></td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
