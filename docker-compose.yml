@@ -29,9 +29,43 @@ services:
     networks:
       - pintrader-net
 
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "4001:4001"  # IPFS swarm
+      - "5001:5001"  # IPFS API
+      - "8080:8080"  # IPFS Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_export:/export
+    networks:
+      - pintrader-net
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ipfs_processor:
+    build:
+      context: ./ipfs_service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/pintrader
+    volumes:
+      - ./frontend/uploads:/app/uploads
+    depends_on:
+      - db
+      - ipfs
+    networks:
+      - pintrader-net
+    restart: always
+
 networks:
   pintrader-net:
     driver: bridge
 
 volumes:
   postgres_data:
+  ipfs_data:
+  ipfs_export:
